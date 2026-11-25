@@ -10,6 +10,9 @@ on:
         type: string
         default: none
         description: Use manual for C projects built with make
+      legacy-category:
+        type: string
+        description: Previous workflow-derived SARIF category whose GitHub alert history must be compared
       apt-packages:
         type: string
         description: Development packages for a manual C build
@@ -78,6 +81,24 @@ jobs:
           artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
           path: ${{ runner.temp }}/codeql-results
           merge-multiple: true
+      - if: inputs.legacy-category != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: infrastructure
+          sparse-checkout: tools
+          persist-credentials: false
+      - name: Preserve the previous CodeQL comparison
+        if: inputs.legacy-category != ''
+        env:
+          LANGUAGE: ${{ inputs.language }}
+          LEGACY_CATEGORY: ${{ inputs.legacy-category }}
+        run: |
+          report="$RUNNER_TEMP/codeql-results/upload.sarif"
+          jq -e --arg canonical "/language:$LANGUAGE/" --arg legacy "$LEGACY_CATEGORY" \
+            -f infrastructure/tools/codeql-legacy-category.jq "$report" > "$RUNNER_TEMP/compatible.sarif"
+          mv "$RUNNER_TEMP/compatible.sarif" "$report"
       - uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
           ref: ${{ github.ref }}

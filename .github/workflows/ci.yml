@@ -59,6 +59,7 @@ jobs:
     uses: $/.github/workflows/codeql.yml
     with:
       language: ${{ matrix.language }}
+      legacy-category: ${{ matrix.language == 'python' && '.github/workflows/ci.yml:legacy-compatibility-test' || '' }}
   sample-archive:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
