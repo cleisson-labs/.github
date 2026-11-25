@@ -1,0 +1,11 @@
+{
+  "name": "Cleisson Labs Rust CI",
+  "description": "Validate and audit a locked Cargo project using the shared Cleisson Labs workflows.",
+  "categories": [
+    "Rust",
+    "Continuous integration"
+  ],
+  "filePatterns": [
+    "^Cargo\\.toml$"
+  ]
+}

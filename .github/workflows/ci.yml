@@ -83,9 +83,32 @@ jobs:
     uses: $/.github/workflows/release-assets.yml
     with:
       assets: sample.tar.gz
+  templates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash tools/install.sh actionlint zizmor
+      - name: Render and validate onboarding templates
+        run: |
+          rendered=$(mktemp -d)
+          for template in workflow-templates/*.yml; do
+            metadata="${template%.yml}.properties.json"
+            jq -e '(.name | type == "string" and length > 0) and (.description | type == "string" and length > 0)' "$metadata"
+            sed 's/[$]default-branch/main/g' "$template" > "$rendered/$(basename "$template")"
+          done
+          for metadata in workflow-templates/*.properties.json; do
+            test -f "${metadata%.properties.json}.yml"
+          done
+          actionlint "$rendered"/*.yml
+          zizmor --offline --config config/zizmor.yml "$rendered"/*.yml
   ci-ok:
     if: always()
-    needs: [security, docs, rust, audit, c, node, python, codeql, sample-archive, assemble]
+    needs: [security, docs, rust, audit, c, node, python, codeql, sample-archive, assemble, templates]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

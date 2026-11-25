@@ -1,0 +1,11 @@
+{
+  "name": "Cleisson Labs Node.js CI",
+  "description": "Run an npm project's validate script alongside shared documentation, dependency and security checks.",
+  "categories": [
+    "JavaScript",
+    "Continuous integration"
+  ],
+  "filePatterns": [
+    "^package\\.json$"
+  ]
+}
