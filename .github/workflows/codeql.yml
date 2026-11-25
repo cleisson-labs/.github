@@ -1,0 +1,86 @@
+name: CodeQL
+on:
+  workflow_call:
+    inputs:
+      language:
+        type: string
+        required: true
+        description: One CodeQL language per call
+      build-mode:
+        type: string
+        default: none
+        description: Use manual for C projects built with make
+      apt-packages:
+        type: string
+        description: Development packages for a manual C build
+
+permissions: {}
+jobs:
+  analyze:
+    runs-on: ${{ inputs.build-mode == 'manual' && 'ubuntu-22.04' || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.sarif.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install manual build dependencies
+        if: inputs.build-mode == 'manual'
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          LANGUAGE: ${{ inputs.language }}
+        run: |
+          [[ "$LANGUAGE" == c-cpp ]]
+          read -r -a packages <<< "$APT_PACKAGES"
+          for package in "${packages[@]}"; do
+            [[ "$package" =~ ^[a-z0-9][a-z0-9.+-]*$ ]] || { echo 'Invalid apt package name' >&2; exit 1; }
+          done
+          if (( ${#packages[@]} )); then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y -- "${packages[@]}"
+          fi
+      - uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          languages: ${{ inputs.language }}
+          build-mode: ${{ inputs.build-mode }}
+      - if: inputs.build-mode == 'manual'
+        run: make -j2
+      - uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          category: /language:${{ inputs.language }}
+          # Resolve source fingerprints before the reporter receives the data.
+          post-processed-sarif-path: ${{ runner.temp }}/codeql-results
+          upload: never
+          upload-database: false
+      - id: sarif
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: codeql-${{ inputs.language }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/codeql-results/*.sarif
+          if-no-files-found: error
+          retention-days: 1
+
+  # Rust extraction can run build.rs and procedural macros, even in no-build mode.
+  # Only a fresh runner that never executes repository code can submit results.
+  upload:
+    needs: analyze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
+          path: ${{ runner.temp }}/codeql-results
+          merge-multiple: true
+      - uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
+          sarif_file: ${{ runner.temp }}/codeql-results
+          category: /language:${{ inputs.language }}

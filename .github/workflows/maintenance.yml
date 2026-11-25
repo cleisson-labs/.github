@@ -1,0 +1,32 @@
+name: Scheduled checks
+on:
+  schedule:
+    - cron: '19 7 * * 1'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: maintenance-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  links:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/docs.yml
+    with:
+      external: true
+  codeql:
+    strategy:
+      matrix:
+        language: [actions, python]
+    permissions:
+      contents: read
+      security-events: write
+    uses: $/.github/workflows/codeql.yml
+    with:
+      language: ${{ matrix.language }}
+  audit:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/rust-audit.yml
+    with:
+      working-directory: tests/fixtures/languages

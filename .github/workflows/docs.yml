@@ -1,0 +1,46 @@
+name: Documentation
+on:
+  workflow_call:
+    inputs:
+      external:
+        description: Check public network links on trusted scheduled runs
+        type: boolean
+        default: false
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: project
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: infrastructure
+          sparse-checkout: |
+            config
+            tools
+          persist-credentials: false
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@3ce8f712b5d8f31acd8e201be6d97e3d2bb23eb7 # v25.1.0
+        with:
+          config: infrastructure/config/.markdownlint-cli2.jsonc
+          globs: project/**/*.{md,markdown}
+      - name: Install verified link checker
+        run: bash infrastructure/tools/install.sh lychee
+      - name: Check links in tracked Markdown
+        working-directory: project
+        env:
+          EXTERNAL: ${{ inputs.external && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref_name == github.event.repository.default_branch }}
+        run: |
+          options=(--offline)
+          if [[ "$EXTERNAL" == true ]]; then
+            options=(--exclude-all-private --max-concurrency 4 --max-retries 2)
+          fi
+          git ls-files -z -- '*.md' '*.markdown' | xargs -0 -r lychee --no-progress --root-dir "$PWD" "${options[@]}" --

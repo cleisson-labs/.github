@@ -1,0 +1,43 @@
+name: Common security checks
+on: workflow_call
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: project
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: infrastructure
+          sparse-checkout: tools
+          persist-credentials: false
+      - name: Install verified tools
+        run: bash infrastructure/tools/install.sh actionlint zizmor gitleaks shellcheck shfmt
+      - name: Check workflows and actions
+        working-directory: project
+        run: |
+          actionlint -color
+          zizmor --offline .
+      - name: Scan Git history for secrets
+        working-directory: project
+        run: gitleaks git --redact --no-banner --log-opts=--all .
+      - name: Check shell scripts
+        working-directory: project
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash ../infrastructure/tools/check-shell.sh
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: never

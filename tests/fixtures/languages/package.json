@@ -1,0 +1,7 @@
+{
+  "name": "workflow-smoke",
+  "private": true,
+  "scripts": {
+    "validate": "node --test --experimental-test-coverage"
+  }
+}

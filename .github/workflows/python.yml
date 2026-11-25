@@ -1,0 +1,40 @@
+name: Python
+on:
+  workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: linux
+        description: GitHub-hosted linux or macos
+      working-directory:
+        type: string
+        default: .
+      tests-directory:
+        type: string
+        default: tests
+
+permissions: {}
+jobs:
+  check:
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-24.04","macos":"macos-15"}')[inputs.platform] }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: 0.17.6
+          src: ${{ inputs.working-directory }}
+          download-from-astral-mirror: false
+          checksum: ${{ runner.os == 'macOS' && '72a886253072cd1bb6a5978a33a5a7add848ee315a8b0f1589f164a11c26328d' || '94b33791f48cd54ab35ad673a443a5c001d3e6d87effeaba9899070b700d45f3' }}
+      - name: Run unittest suite
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          TEST_DIRECTORY: ${{ inputs.tests-directory }}
+        run: python -m unittest discover -s "$TEST_DIRECTORY" -p 'test_*.py'

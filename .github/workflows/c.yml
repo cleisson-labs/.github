@@ -1,0 +1,57 @@
+name: C
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: .
+      apt-packages:
+        type: string
+        description: Space-separated Ubuntu development package names
+      coverage:
+        type: boolean
+        default: false
+        description: Run the project's make coverage target with GCC and gcovr
+      sanitizers:
+        type: boolean
+        default: false
+        description: Run the project's make sanitize target with Clang
+
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install analysis tools and project libraries
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          read -r -a packages <<< "$APT_PACKAGES"
+          for package in "${packages[@]}"; do
+            [[ "$package" =~ ^[a-z0-9][a-z0-9.+-]*$ ]] || { echo 'Invalid apt package name' >&2; exit 1; }
+          done
+          packages+=(cppcheck)
+          if [[ "$COVERAGE" == true ]]; then packages+=(gcovr); fi
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y -- "${packages[@]}"
+      - name: Check configured C formatting
+        run: |
+          if [[ -f .clang-format || -f _clang-format ]]; then
+            git ls-files -z -- '*.c' '*.h' | xargs -0 -r clang-format --dry-run --Werror --
+          fi
+      - run: make analyze
+      - if: inputs.sanitizers
+        run: make -j2 sanitize CC=clang
+      - if: inputs.coverage
+        run: make -j2 coverage CC=gcc
