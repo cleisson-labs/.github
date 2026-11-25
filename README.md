@@ -15,7 +15,7 @@ Call these files from `.github/workflows/` by their full commit SHA. Inputs and 
 | [docs.yml](.github/workflows/docs.yml) | Markdown syntax and offline links. Set `external: true` on a scheduled or manually dispatched default-branch run to check public URLs. |
 | [rust.yml](.github/workflows/rust.yml) | rustfmt, Clippy, locked tests and build, optional MSRV, native coverage and a smoke-test binary. The compilation cache is saved by trusted default-branch pushes. |
 | [rust-audit.yml](.github/workflows/rust-audit.yml) | cargo-deny advisories on the locked graph, or the full policy when a project supplies `deny.toml`. |
-| [c.yml](.github/workflows/c.yml) | Cppcheck via `make analyze`, clang-format for configured projects, optional Clang sanitizers and GCC/gcovr coverage targets. |
+| [c.yml](.github/workflows/c.yml) | Cppcheck via `make analyze`, clang-format on changed C/header lines in configured projects, optional Clang sanitizers and GCC/gcovr coverage targets. |
 | [node.yml](.github/workflows/node.yml) | Node 24 and the project's `npm run validate`, or syntax checking and native test coverage for a manifest-free project. |
 | [python.yml](.github/workflows/python.yml) | Python 3.13, checksum-verified Ruff and unittest discovery. |
 | [codeql.yml](.github/workflows/codeql.yml) | One language per call. Extraction and any project build use a read-only token. A fresh job submits SARIF. |

@@ -49,8 +49,6 @@ jobs:
     permissions:
       contents: read
     uses: $/.github/workflows/python.yml
-    with:
-      working-directory: tests/fixtures/languages
   codeql:
     strategy:
       matrix:
@@ -61,7 +59,7 @@ jobs:
     uses: $/.github/workflows/codeql.yml
     with:
       language: ${{ matrix.language }}
-  release-tests:
+  sample-archive:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -70,8 +68,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Test assembly and draft publication
-        run: python3 -m unittest discover -s tests -v
       - name: Make a sample archive
         run: tar -czf sample.tar.gz -C tests test_release.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -80,7 +76,7 @@ jobs:
           path: sample.tar.gz
           if-no-files-found: error
   assemble:
-    needs: release-tests
+    needs: sample-archive
     permissions:
       contents: read
     uses: $/.github/workflows/release-assets.yml
@@ -88,7 +84,7 @@ jobs:
       assets: sample.tar.gz
   ci-ok:
     if: always()
-    needs: [security, docs, rust, audit, c, node, python, codeql, release-tests, assemble]
+    needs: [security, docs, rust, audit, c, node, python, codeql, sample-archive, assemble]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
