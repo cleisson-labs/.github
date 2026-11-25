@@ -48,5 +48,6 @@ jobs:
           name: release-assets
           path: dist/
           if-no-files-found: error
+          retention-days: ${{ github.ref_type != 'tag' && github.event_name != 'workflow_dispatch' && 3 || 0 }}
           compression-level: 0
           overwrite: true

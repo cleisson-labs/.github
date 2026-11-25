@@ -21,6 +21,7 @@ jobs:
         with:
           name: release-part-sample
           path: provenance-sample.tar.gz
+          retention-days: 7
           if-no-files-found: error
           overwrite: true
 
