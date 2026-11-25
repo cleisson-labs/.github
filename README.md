@@ -25,6 +25,8 @@ Call these files from `.github/workflows/` by their full commit SHA. Inputs and 
 
 Ordinary jobs need `contents: read`. The CodeQL caller also grants `security-events: write`; the called workflow limits that permission to its upload job. The release caller grants `contents: write`, `attestations: write` and `id-token: write` only to the tag-gated release call. Job permissions can only decrease across a workflow call. Keep repository-controlled scripts, PR builds and tests out of jobs with write access.
 
+When migrating an existing single-language CodeQL analysis, check the category in the default branch's most recent SARIF report. If GitHub expects an older workflow-derived category, pass its exact value in `legacy-category` on every CodeQL call for that language. The reporter sends the same findings and fingerprints under both categories in one upload, preserving comparison with the original baseline. [GitHub CodeQL categories](https://docs.github.com/en/code-security/reference/code-scanning/workflow-configuration-options)
+
 ## Integrate a repository
 
 1. Enable Actions, the dependency graph, Dependabot alerts and security updates, private vulnerability reporting, secret scanning and push protection in the public repository. Use the standard GitHub-hosted runners. Configure CodeQL through the reusable workflow so GitHub has one analysis source per language.
