@@ -1,0 +1,104 @@
+name: Attest and publish a release
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        description: Single verified bundle ID from release-assets.yml
+        type: string
+        required: true
+      publish:
+        description: Publish the attested bundle as a GitHub release
+        type: boolean
+        default: true
+      title:
+        description: Release title (defaults to the version tag)
+        type: string
+        default: ''
+      notes:
+        description: Reviewed release notes to prepend
+        type: string
+        default: ''
+      generate-notes:
+        description: Include GitHub-generated comparison notes
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  attest:
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check the bundle identifier
+        env:
+          ARTIFACT_ID: ${{ inputs.artifact-id }}
+        run: '[[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts
+          path: infrastructure
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          merge-multiple: true
+          path: dist
+      - name: Verify every checksum before signing
+        run: python3 infrastructure/scripts/release.py verify
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+          create-storage-record: false
+
+      - name: Verify source tag and provenance for every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER_SHA: ${{ job.workflow_sha }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF" --jq .sha)" = "$GITHUB_SHA"
+          for asset in dist/*; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow cleisson-labs/.github/.github/workflows/release.yml \
+              --signer-digest "$SIGNER_SHA" --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          done
+
+  publish:
+    if: inputs.publish
+    needs: attest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts
+          path: infrastructure
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          merge-multiple: true
+          path: dist
+      - name: Verify draft contents and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: ${{ inputs.title }}
+          NOTES: ${{ inputs.notes }}
+          GENERATE_NOTES: ${{ inputs.generate-notes }}
+        run: |
+          # The tag can change while the separate signing job is running.
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF" --jq .sha)" = "$GITHUB_SHA"
+          python3 infrastructure/scripts/release.py publish

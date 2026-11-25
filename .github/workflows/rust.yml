@@ -1,0 +1,96 @@
+name: Rust
+on:
+  workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: linux
+        description: GitHub-hosted linux or macos
+      working-directory:
+        type: string
+        default: .
+      toolchain:
+        type: string
+        default: stable
+      msrv:
+        type: string
+        description: Additional minimum Rust version to check
+      coverage:
+        type: boolean
+        default: false
+      release-build:
+        type: boolean
+        default: true
+      binary:
+        type: string
+        description: Optional debug binary to upload for a downstream smoke test
+
+permissions: {}
+jobs:
+  check:
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-latest","macos":"macos-latest"}')[inputs.platform] }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    env:
+      RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install toolchain
+        run: |
+          [[ "$RUSTUP_TOOLCHAIN" =~ ^(stable|[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          cache-bin: false
+          save-if: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+      - run: cargo fmt --all --check
+      - name: Check minimum Rust version
+        if: inputs.msrv != ''
+        env:
+          MSRV: ${{ inputs.msrv }}
+        run: |
+          [[ "$MSRV" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          rustup toolchain install "$MSRV" --profile minimal
+          cargo "+$MSRV" check --workspace --locked
+      - run: cargo clippy --workspace --locked --all-targets --all-features -- -D warnings
+      - if: ${{ !inputs.coverage }}
+        run: cargo test --workspace --locked --all-features
+      - if: inputs.coverage
+        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-llvm-cov@0.9.2
+          fallback: none
+      - name: Test with line coverage
+        if: inputs.coverage
+        run: |
+          rustup component add llvm-tools-preview
+          cargo llvm-cov --workspace --locked --all-features --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+          # Stable coverage does not instrument doctests. Binary-only packages have none.
+          doctests=$(cargo metadata --locked --no-deps --format-version 1 | jq 'any(.packages[].targets[]; .doctest)')
+          if [[ "$doctests" == true ]]; then
+            cargo test --workspace --locked --all-features --doc
+          fi
+      - if: inputs.release-build
+        run: cargo build --workspace --locked --release
+      - name: Build smoke-test binary
+        if: inputs.binary != ''
+        env:
+          BINARY: ${{ inputs.binary }}
+        run: |
+          [[ "$BINARY" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_-]*$ ]]
+          cargo build --locked --bin "$BINARY"
+      - if: inputs.binary != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.binary }}-${{ inputs.platform }}-debug
+          path: ${{ inputs.working-directory }}/target/debug/${{ inputs.binary }}
+          if-no-files-found: error
+          retention-days: 1

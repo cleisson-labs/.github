@@ -1,0 +1,46 @@
+name: Verify infrastructure tag provenance
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions: {}
+concurrency:
+  group: provenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Archive the infrastructure commit identifier
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > source-commit.txt
+          tar -czf provenance-sample.tar.gz source-commit.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-part-sample
+          path: provenance-sample.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  assemble:
+    needs: sample
+    permissions:
+      contents: read
+    uses: $/.github/workflows/release-assets.yml
+    with:
+      assets: provenance-sample.tar.gz
+
+  verify:
+    needs: assemble
+    # The called workflow declares a publication job; publish=false skips it before runner allocation.
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    uses: $/.github/workflows/release.yml
+    with:
+      artifact-id: ${{ needs.assemble.outputs.artifact-id }}
+      publish: false

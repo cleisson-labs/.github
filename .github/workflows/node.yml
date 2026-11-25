@@ -1,0 +1,58 @@
+name: Node.js
+on:
+  workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: linux
+        description: GitHub-hosted linux or macos
+      working-directory:
+        type: string
+        default: .
+      test-files:
+        type: string
+        description: Node test path or glob for projects without package.json
+
+permissions: {}
+jobs:
+  check:
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-latest","macos":"macos-latest"}')[inputs.platform] }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate npm project
+        if: inputs.test-files == ''
+        run: |
+          if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then npm ci --ignore-scripts; fi
+          npm run validate | tee "$RUNNER_TEMP/node-validation.log"
+      - name: Check JavaScript syntax and run native tests with coverage
+        if: inputs.test-files != ''
+        env:
+          TEST_FILES: ${{ inputs.test-files }}
+        run: |
+          git ls-files -z -- '*.js' '*.mjs' '*.cjs' > "$RUNNER_TEMP/node-sources"
+          while IFS= read -r -d '' source; do
+            node --check "./$source"
+          done < "$RUNNER_TEMP/node-sources"
+          node --test --experimental-test-coverage -- "$TEST_FILES" | tee "$RUNNER_TEMP/node-validation.log"
+      - name: Summarize native test coverage when collected
+        run: |
+          if grep -q 'start of coverage report' "$RUNNER_TEMP/node-validation.log"; then
+            {
+              echo '```text'
+              sed -n '/start of coverage report/,/end of coverage report/p' "$RUNNER_TEMP/node-validation.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

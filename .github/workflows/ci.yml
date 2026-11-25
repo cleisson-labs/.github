@@ -1,0 +1,95 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions: {}
+jobs:
+  security:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/security.yml
+  docs:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/docs.yml
+  rust:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/rust.yml
+    with:
+      working-directory: tests/fixtures/languages
+      toolchain: '1.93.1'
+      coverage: true
+  audit:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/rust-audit.yml
+    with:
+      working-directory: tests/fixtures/languages
+  c:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/c.yml
+    with:
+      coverage: true
+      sanitizers: true
+      working-directory: tests/fixtures/languages
+  node:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/node.yml
+    with:
+      working-directory: tests/fixtures/languages
+  python:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/python.yml
+  codeql:
+    strategy:
+      matrix:
+        language: [actions, python]
+    permissions:
+      contents: read
+      security-events: write
+    uses: $/.github/workflows/codeql.yml
+    with:
+      language: ${{ matrix.language }}
+  sample-archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Make a sample archive
+        run: tar -czf sample.tar.gz -C tests test_release.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-part-sample
+          path: sample.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+  assemble:
+    needs: sample-archive
+    permissions:
+      contents: read
+    uses: $/.github/workflows/release-assets.yml
+    with:
+      assets: sample.tar.gz
+  ci-ok:
+    if: always()
+    needs: [security, docs, rust, audit, c, node, python, codeql, sample-archive, assemble]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every validation job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'length > 0 and all(.[]; .result == "success")' <<<"$RESULTS"

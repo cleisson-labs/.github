@@ -1,0 +1,74 @@
+name: C
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: .
+      apt-packages:
+        type: string
+        description: Space-separated Ubuntu development package names
+      coverage:
+        type: boolean
+        default: false
+        description: Run the project's make coverage target with GCC and gcovr
+      sanitizers:
+        type: boolean
+        default: false
+        description: Run the project's make sanitize target with Clang
+
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: project/${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: project
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: infrastructure
+          sparse-checkout: tools
+          persist-credentials: false
+      - name: Install analysis tools and project libraries
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          read -r -a packages <<< "$APT_PACKAGES"
+          for package in "${packages[@]}"; do
+            [[ "$package" =~ ^[a-z0-9][a-z0-9.+-]*$ ]] || { echo 'Invalid apt package name' >&2; exit 1; }
+          done
+          packages+=(cppcheck clang-format-18)
+          if [[ "$COVERAGE" == true ]]; then packages+=(gcovr); fi
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y -- "${packages[@]}"
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+      - name: Check configured C formatting
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
+        env:
+          # The tested PR merge commit's first parent is its actual base.
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+        run: bash "$GITHUB_WORKSPACE/infrastructure/tools/check-c-format.sh" "$BASE"
+      - run: make analyze
+      - if: inputs.sanitizers
+        run: make -j2 sanitize CC=clang
+      - if: inputs.coverage
+        run: |
+          make -j2 coverage CC=gcc | tee "$RUNNER_TEMP/c-coverage.log"
+          {
+            echo '```text'
+            awk '/^TOTAL[[:space:]]|^(lines|functions|branches|conditions|decisions|calls):/' "$RUNNER_TEMP/c-coverage.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
