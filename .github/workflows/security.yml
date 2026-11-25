@@ -18,7 +18,9 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: infrastructure
-          sparse-checkout: tools
+          sparse-checkout: |
+            config
+            tools
           persist-credentials: false
       - name: Install verified tools
         run: bash infrastructure/tools/install.sh actionlint zizmor gitleaks shellcheck shfmt
@@ -26,7 +28,7 @@ jobs:
         working-directory: project
         run: |
           actionlint -color
-          zizmor --offline .
+          zizmor --offline --config ../infrastructure/config/zizmor.yml .
       - name: Scan Git history for secrets
         working-directory: project
         run: gitleaks git --redact --no-banner --log-opts=--all .

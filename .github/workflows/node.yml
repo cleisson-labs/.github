@@ -16,7 +16,7 @@ on:
 permissions: {}
 jobs:
   check:
-    runs-on: ${{ fromJSON('{"linux":"ubuntu-24.04","macos":"macos-15"}')[inputs.platform] }}
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-latest","macos":"macos-latest"}')[inputs.platform] }}
     timeout-minutes: 10
     permissions:
       contents: read
