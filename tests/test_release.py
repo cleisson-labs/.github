@@ -145,3 +145,23 @@ class ReleaseTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             publish(self.dist, "v1.0.0", "", "", True, gh)
         self.assertEqual(gh.call_count, 1)
+
+    def test_native_binary_checksum_sidecar_is_verified_and_preserved(self):
+        body = f"{self.digest} *{self.archive.name}\n".encode("ascii")
+        supplied = self.part / f"{self.archive.name}.sha256"
+        supplied.write_bytes(body)
+        assemble(self.parts, self.dist, self.expected, False)
+        self.assertEqual((self.dist / supplied.name).read_bytes(), body)
+        verify(self.dist)
+        for contents in (
+            body.replace(b"*", b"*../"),
+            b"0" * 64 + body[64:],
+            body + body,
+        ):
+            supplied.write_bytes(contents)
+            with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
+                assemble(self.parts, Path(tmp, "dist"), self.expected, False)
+
+    def test_download_action_flattens_a_single_matching_artifact(self):
+        assemble(self.part, self.dist, self.expected, False)
+        self.assertEqual(verify(self.dist)[self.archive.name], "sha256:" + self.digest)

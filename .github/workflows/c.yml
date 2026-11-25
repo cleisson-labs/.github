@@ -54,4 +54,10 @@ jobs:
       - if: inputs.sanitizers
         run: make -j2 sanitize CC=clang
       - if: inputs.coverage
-        run: make -j2 coverage CC=gcc
+        run: |
+          make -j2 coverage CC=gcc | tee "$RUNNER_TEMP/c-coverage.log"
+          {
+            echo '```text'
+            awk '/^TOTAL[[:space:]]|^(lines|functions|branches|conditions|decisions|calls):/' "$RUNNER_TEMP/c-coverage.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

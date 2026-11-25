@@ -36,28 +36,38 @@ def checksums(digests, combined):
     return {f"{name}.sha256": line for name, line in lines.items()}
 
 
+def downloaded_files(parts):
+    files = {}
+    for part in parts.iterdir():
+        # download-artifact extracts a single match flat and multiple matches by name.
+        grouped = (
+            part.name.startswith("release-part-")
+            and part.is_dir()
+            and not part.is_symlink()
+        )
+        for path in part.iterdir() if grouped else [part]:
+            if path.name in files:
+                raise ValueError(f"Duplicate release asset: {path.name}")
+            files[path.name] = regular_file(path)
+    return files
+
+
 def assemble(parts, destination, manifest, combined):
     names = [asset_name(line) for line in manifest.splitlines()]
     if not names or len({name.casefold() for name in names}) != len(names):
         raise ValueError("Release manifest is empty or contains duplicate names")
-    archives = {}
-    for part in parts.iterdir():
-        if part.is_symlink() or not part.is_dir():
-            raise ValueError(f"Expected a release part directory: {part.name}")
-        for path in part.iterdir():
-            if path.name in archives:
-                raise ValueError(f"Duplicate release asset: {path.name}")
-            archives[path.name] = regular_file(path)
-    if set(archives) != set(names):
-        raise ValueError(
-            f"Release manifest mismatch: {sorted(set(archives) ^ set(names))}"
-        )
+    files = downloaded_files(parts)
+    optional = set() if combined else {f"{name}.sha256" for name in names}
+    mismatches = set(names) ^ (set(files) - optional)
+    if mismatches:
+        raise ValueError(f"Release manifest mismatch: {sorted(mismatches)}")
     destination.mkdir()
-    for name, path in archives.items():
+    for name, path in files.items():
         shutil.copyfile(path, destination / name)
     digests = {name: file_digest(destination / name) for name in names}
     for name, contents in checksums(digests, combined).items():
-        (destination / name).write_text(contents, encoding="ascii")
+        if name not in files:
+            (destination / name).write_text(contents, encoding="ascii")
     verify(destination)
 
 
@@ -76,7 +86,11 @@ def verify(directory):
             "Release bundle checksum inventory does not match its archives"
         )
     for name, contents in expected.items():
-        if files[name].read_bytes() != contents.encode("ascii"):
+        # GNU checksums on Windows record binary mode with an asterisk.
+        valid = {contents.encode("ascii")}
+        if name.endswith(".sha256"):
+            valid.add(contents.replace("  ", " *", 1).encode("ascii"))
+        if files[name].read_bytes() not in valid:
             raise ValueError(f"Incorrect release checksum: {name}")
     return {
         name: "sha256:" + digest
