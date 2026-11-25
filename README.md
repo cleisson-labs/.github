@@ -39,7 +39,7 @@ GitHub falls back to these contribution, conduct, support, security, issue and P
 
 Build and smoke-test archives in unprivileged platform jobs. Upload one uniquely named `release-part-*` artifact per producer. Pass the complete expected filenames to the assembly workflow. It rejects missing, unexpected, duplicate, empty or symlinked assets and computes SHA-256 sidecars or a combined `SHA256SUMS` according to the project's public contract.
 
-Pass the resulting `artifact-id` to the tag-gated publication workflow. Only the attestation job can request an OIDC identity. The publisher checks the tag commit, signer workflow, source ref and digest and hosted runner identity. It compares the remote asset inventory and hashes before publishing a draft. A retry resumes a matching draft. If an existing public release differs, publication stops and preserves the existing assets. Use one non-cancelling release concurrency group per tag in the caller. Consumers can verify a downloaded archive with:
+Pass the resulting `artifact-id` to the tag-gated publication workflow. Only the attestation job can request an OIDC identity. It verifies the source tag and digest, signer workflow and digest, and hosted runner identity. The publisher rechecks the tag commit and compares the remote asset inventory and hashes before publishing a draft. A retry resumes a matching draft. If an existing public release differs, publication stops and preserves the existing assets. Use one non-cancelling release concurrency group per tag in the caller. Consumers can verify a downloaded archive with:
 
 ```sh
 gh attestation verify "$archive" --repo "cleisson-labs/$project" \
@@ -51,7 +51,7 @@ GitHub artifact attestations and CodeQL analysis are available for these public 
 
 ## Maintain and version the infrastructure
 
-Use a PR to update verified pins and tool digests, exercise the language fixtures and rehearse release assembly. After the default branch passes, create an immutable semantic version tag at that tested commit. Patch versions fix compatible behavior, minor versions add optional capabilities, and major versions change caller contracts. Never move a published version tag. Roll back a caller by reverting its pin to a previously verified commit.
+Use a PR to update verified pins and tool digests, exercise the language fixtures and rehearse release assembly. After the default branch passes, create an immutable semantic version tag at that tested commit. Patch versions fix compatible behavior, minor versions add optional capabilities, and major versions change caller contracts. The infrastructure tag triggers an end-to-end provenance rehearsal with a sample archive and its checksum. It runs the same signing and verification jobs with publication disabled. Confirm that rehearsal passes before adopting the pin. Never move a published version tag. Roll back a caller by reverting its pin to a previously verified commit.
 
 The [Linux tool manifest](tools/linux-tools.tsv) names each upstream asset and its SHA-256. Compare its digest with the upstream release metadata before changing it. The installer verifies the exact bytes before extraction. The maintained MIT-licensed actionlint fork recognizes GitHub's workflow identity and self-repository syntax. Gitleaks uses the open-source CLI; the separate Gitleaks GitHub Action requires an organization license. [actionlint](https://github.com/kjanat/actionlint) · [Gitleaks CLI](https://github.com/gitleaks/gitleaks) · [Gitleaks Action licensing](https://github.com/gitleaks/gitleaks-action)
 
